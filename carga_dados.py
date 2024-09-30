@@ -39,6 +39,11 @@ assuntos_tpu.rename(columns={'codnivel1': 'assunto_nivel1',
                              'codnivel5': 'assunto_nivel5', 
                              'codassunto': 'codassunto'}, inplace=True)
 
+# Pegando apenas as classes de Processo Cível e do Trabalho (CodNivel1 = 2)
+classes = classes_tpu[classes_tpu['classe_nivel1'] == 2]
+classes = classes['codclasse'].to_list()
+classes.sort()
+
 # Códigos de movimentos, que segunda a TPU são referentes a julgamentos
 movs_julgamento = [193,196,198,200,202,208,210,212,214,218,219,220,221,228,230,235,236,237,238,239,240,241,242,244,385,442,443,444,445,446,447,448,449,450,451,452,453,454,455,456,
  457,458,459,460,461,462,463,464,465,466,471,472,473,853,871,884,900,901,972,973,1042,1043,1044,1045,1046,1047,1048,1049,1050,10953,10961,10964,10965,11373,11374,
@@ -52,7 +57,7 @@ movs_julgamento = [193,196,198,200,202,208,210,212,214,218,219,220,221,228,230,2
  15261,15262,15263,15264,15265,15266,15322,15408,1002013,1003301,1003302,1050009,1050080,1050083,1050147,4050028,4050079,4050080,4050083,22,246]
 
 movs_arquivamento = [22,246]
-mov_evolucao_classe = 14739
+movs_evolucao_classe = 10966, 14739
 
 # Variáveis para utilização da API do Datajud
 headers = {
@@ -75,18 +80,44 @@ def extrair_julgamento(movimentos):
   return None
 
 
-def load_data_from_datajud_api(tribunal, classe):
+# Método para extrair a data de julgamento
+def extrair_classe_original(movimentos, codigo_classe):
+  classe_atual = codigo_classe
+  classe_anterior = 0
+  classe_nova = 0
+  try:
+    for movimento in movimentos:
+      if movimento['codigo'] in movs_evolucao_classe:
+        for complemento in movimento['complementosTabelados']:
+          if complemento['descricao'] == 'classe_anterior':
+            classe_anterior = complemento['valor']
+          if complemento['descricao'] == 'classe_nova':
+            classe_nova = complemento['valor']
+
+    if classe_nova == classe_atual:
+      classe_atual = classe_anterior
+    return classe_atual
+  except:
+    return classe_atual
+
+def load_data_from_datajud_api(tribunal, classe, search_after):
     url = f"https://api-publica.datajud.cnj.jus.br/api_publica_{tribunal}/_search"
 
     payload = json.dumps({
         "size":10000,
         "query": {
-            "bool": {
-                "must": [
-                    {"match": {"classe.codigo": classe}}
-                ]
-            }
-        }
+        "bool": {
+            "must": [
+                {"match": {"classe.codigo": classe}}
+            ]
+          }
+        },
+        "sort": [{
+          "@timestamp": {
+              "order": "asc"
+          }
+      }],
+      "search_after": [search_after]
     })
 
     response = requests.request("POST", url, headers=headers, data=payload)
@@ -94,14 +125,28 @@ def load_data_from_datajud_api(tribunal, classe):
     # Os dados estão dentro de hits
     lista = resposta['hits']['hits']
     
+    # Removendo o primeiro registro, que vem repetido na paginação
+    remover_linha = search_after != 0
+
     # Criando o DataFrame com os dados
     df = pd.DataFrame.from_records(lista)
+    # Guardando o último registro da coluna sort, para poder fazer a paginação
+    try:
+      search_after = df['sort'][:-1][0][0]
+    except:
+      return (0,pd.DataFrame())
+
     df = df['_source'].apply(pd.Series)
+    if remover_linha:
+      df = df.iloc[1:, :]
 
     # Muitos dados estão em json dentro da coluna do DataFrame, por isso são extraídos para novas colunas
     df[['codigo_classe','nome_classe']] = df['classe'].apply(pd.Series)
     df[['codigo_formato','nome_formato']] = df['formato'].apply(pd.Series)
     df[['orgao_codigoMunicipioIBGE','orgao_codigo','orgao_nome']] = df['orgaoJulgador'].apply(pd.Series)
+
+    # Aplica método pra capturar a classe anterior, em caso de evolução de classe
+    df['codigo_classe'] = df.apply(lambda x: extrair_classe_original(x.movimentos, x.codigo_classe), axis=1)
 
     # Aplica os métodos para extrair os assuntos e data de julgamento
     df['data_julgamento'] = df['movimentos'].apply(extrair_julgamento)
@@ -116,7 +161,7 @@ def load_data_from_datajud_api(tribunal, classe):
 
     # Removendo colunas desnecessárias
     colunas_desnecessarias = ['@timestamp','id','sistema','dataHoraUltimaAtualizacao','dataAjuizamento',
-                              'classe','nome_classe','formato','nome_formato',
+                              'classe','nome_classe','formato','nome_formato','orgao_nome',
                               'orgaoJulgador','orgao_codigoMunicipioIBGE','movimentos',
                               'nivelSigilo', 'assuntos'] 
     df.drop(columns=colunas_desnecessarias,inplace=True)
@@ -135,17 +180,27 @@ def load_data_from_datajud_api(tribunal, classe):
     df['numero_processo'] = df['numeroProcesso'].astype(str)
     df.drop(columns=['descclasse','descassunto','codclasse', 'codassunto','numeroProcesso'],inplace=True)
 
-    return df
+    return (search_after,df)
+
+df_final = pd.DataFrame()
+for classe in classes:
+  print(f'Classe: {classe}')
+  search_after = 0
+  size = 1
+  total = 0
+  while size > 0 and total < 150000:
+    try:
+      search_after, df = load_data_from_datajud_api(tribunal, classe, search_after)
+      # Concatenando os DataFrames
+      df_final = pd.concat([df_final, df], ignore_index=True)
+
+      size = len(df)
+      total = len(df_final)
+      print(f'Total processos carregados: {total}')
+    except Exception as error:
+      print(f'Erro: {error}')
+      size = 0
 
 
-load_data_from_datajud_api(tribunal, 1116).to_csv('data.csv', index=False, doublequote=True)
-
-
-# 'orgao_nome' guardar pra pegar os respectivos códigos
-
-
-
-
-# df_final = pd.merge(df_final, classes, how='left', left_on='nome_classe', right_on='descclasse')
-
-# df_final.drop(columns=['movimentos','descclasse','descassunto','nome_classe', 'dcr_assunto'])
+df_final.to_csv('data.csv', index=False, doublequote=True)
+print(f'Fim da execução. Processos carregados: {total}')
