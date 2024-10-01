@@ -9,8 +9,27 @@ Para testar os endpoints citados abaixo, clique em [Swagger](http://localhost:80
 
 ### **Extração e gravação dos dados**
 
-`GET` - **`/import`** 
+`POST` - **`/import/csv`** 
 
+Importa os dados pelo arquivo .csv
+Exemplo de resposta:
+
+```
+    "Data imported successfully"
+```
+
+Códigos da Resposta
+
+| Código | Descrição                            |
+|--------|--------------------------------------|
+|200     | Data imported successfully |
+|500     | Error during data import |
+
+---
+
+`POST` - **`/import/api`** 
+
+Importa os dados pela API do Datajud
 Exemplo de resposta:
 
 ```
@@ -30,10 +49,11 @@ Códigos da Resposta
 
 `POST` - **`/predict`**
 
+Endpoint de predição do modelo de acordo com os dados enviados
 Exemplo de resposta:
 
 ```
-    "Resposta de predição"
+    "Entre 181 a 365 dias"
 ```
 
 Códigos da Resposta
