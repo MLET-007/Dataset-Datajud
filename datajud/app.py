@@ -9,7 +9,6 @@ settings = Settings()
 app = FastAPI()
 
 app.mount('/mkdocs', StaticFiles(directory='site', html=True), name='mkdocs')
-
 app.include_router(predict.router)
 app.include_router(import_process.router)
 
