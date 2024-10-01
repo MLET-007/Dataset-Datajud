@@ -3,7 +3,7 @@ nav:
   - Home: index.md
   - Endpoints: endpoints.md
   - Swagger: http://localhost:8000/docs
-  - Notebook: https://colab.research.google.com/drive/10IfzBcE_rQJF4fG54JV--2UOoo4jIZ4K?usp=sharing
+  - Notebook: https://colab.research.google.com/drive/1cUXqNZRGWJN4SW6rY9UQxf-IzHRhXaZo
 theme:
   name: "material"
   language: pt-BR
