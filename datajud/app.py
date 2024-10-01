@@ -3,10 +3,12 @@ from datajud.config import Settings
 from datajud.routers import predict, import_process
 from alembic.config import Config
 from alembic import command
+from fastapi.staticfiles import StaticFiles
 
 settings = Settings()
 app = FastAPI()
 
+app.mount('/mkdocs', StaticFiles(directory='site', html=True), name='mkdocs')
 app.include_router(predict.router)
 app.include_router(import_process.router)
 
