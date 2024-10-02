@@ -6,7 +6,7 @@ class PredictController:
 
     def __init__(self):
         try:
-            model_path = Path(__file__).parent.parent.joinpath('models').joinpath('ml_gbm_datajud.pkl')
+            model_path = Path(__file__).parent.parent.joinpath('models').joinpath('ml_gbm_datajud2.pkl')
             print(model_path)
             self.model = joblib.load(model_path)
         except Exception as error:
